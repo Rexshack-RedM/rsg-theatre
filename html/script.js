@@ -20,7 +20,7 @@ window.addEventListener('message', (e) => {
     $('showDesc').textContent = data.description;
     $('showTime').textContent = data.running ? L.running : L.starts;
     $('priceLabel').textContent = L.price;
-    $('price').textContent = '$' + Number(data.price).toFixed(2);
+    $('price').textContent = L.currency.replace('%s', Number(data.price).toFixed(2));
     $('cancelBtn').textContent = L.close;
 
     const buy = $('buyBtn');

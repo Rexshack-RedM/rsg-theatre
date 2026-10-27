@@ -8,6 +8,7 @@ local nextShowTime = 0
 local showRunning = false
 local showId = 0          -- increments every show, so stale timeouts/reports are ignored
 local watching = {}        -- [src] = true while that player is watching the current show
+local pendingStart = false -- an admin restart is waiting to start; keeps the scheduler out of the gap
 
 local function getShowIndexById(id)
     for i, show in ipairs(Config.Shows) do
@@ -89,7 +90,7 @@ CreateThread(function()
     while true do
         Wait(5000)
         -- if an admin-forced show is still running, hold the scheduled one until it ends
-        if not showRunning and os.time() >= nextShowTime then
+        if not showRunning and not pendingStart and os.time() >= nextShowTime then
             startShow(nextShowIndex)
             pickNextShow()
             nextShowTime = os.time() + (Config.ShowInterval * 60)
@@ -102,8 +103,8 @@ lib.callback.register('rsg-theatre:server:getPlaybill', function(src)
     if not Player then return nil end
     local show = Config.Shows[nextShowIndex]
     return {
-        label = show.label,
-        description = show.description,
+        label = locale('show_' .. show.id),
+        description = locale('show_' .. show.id .. '_desc'),
         minutes = math.max(0, math.ceil((nextShowTime - os.time()) / 60)),
         price = Config.TicketPrice,
         hasTicket = tickets[Player.PlayerData.citizenid] == true,
@@ -135,7 +136,7 @@ RegisterNetEvent('rsg-theatre:server:buyTicket', function()
     end
 
     tickets[cid] = true
-    notify(src, locale('sv_ticket_bought', Config.Shows[nextShowIndex].label), 'success')
+    notify(src, locale('sv_ticket_bought', locale('show_' .. Config.Shows[nextShowIndex].id)), 'success')
 end)
 
 lib.addCommand(Config.AdminCommand, {
@@ -157,8 +158,15 @@ lib.addCommand(Config.AdminCommand, {
         notify(src, locale('cmd_stopping'), 'inform')
         for viewer in pairs(watching) do TriggerClientEvent('rsg-theatre:client:stopShow', viewer) end
         endShow(showId)
-        SetTimeout(3000, function() startShow(index) end)
+        pendingStart = true
+        SetTimeout(3000, function()
+            pendingStart = false
+            startShow(index)
+        end)
         return
+    end
+    if pendingStart then
+        return notify(src, locale('cmd_stopping'), 'inform')
     end
     startShow(index)
 end)

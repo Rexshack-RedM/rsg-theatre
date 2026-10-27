@@ -14,7 +14,7 @@ Config.Debug = false
 Config.TicketSeller = {
     model  = `A_M_M_NBXUPPERCLASS_01`,
     coords = vector4(2542.20, -1282.52, 49.22, 46.44),
-    blip   = { sprite = `blip_ambient_theatre`, name = 'Theatre Raleur' }, -- rdr3_discoveries textures/blips
+    blip   = { sprite = `blip_ambient_theatre` }, -- rdr3_discoveries textures/blips; name is locale 'blip_name'
     targetDistance = 2.0,
     buyDistance    = 6.0,          -- server-side max distance from the seller to buy
 }
@@ -137,8 +137,7 @@ local O3 = { coords = vector3(2546.525, -1302.055, 46.79),  rot = vector3(0.0, 0
 -- rope = optional rope tying a prop to a frozen anchor { prop, anchorModel, anchorCoords, coords, length, ropeType }
 Config.Shows = {
     {
-        id = 'cancan1', label = 'The Can-Can (Part I)',
-        description = 'High kicks and frills from the Raleur dancing girls.',
+        id = 'cancan1', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@cancan_dance@CanCanDanceP1', playlist = 'PB_MAIN', origin = O1,
         peds = {
             CS_CANCAN_01 = `CS_CANCAN_01`, CS_CANCAN_02 = `CS_CANCAN_02`,
@@ -148,8 +147,7 @@ Config.Shows = {
         props = {},
     },
     {
-        id = 'cancan2', label = 'The Can-Can (Part II)',
-        description = 'The dancing girls return for an encore.',
+        id = 'cancan2', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@cancan_dance@CanCanDanceP2', origin = O1,
         peds = {
             CS_CANCAN_01 = `CS_CANCAN_01`, CS_CANCAN_02 = `CS_CANCAN_02`,
@@ -159,8 +157,7 @@ Config.Shows = {
         props = {},
     },
     {
-        id = 'bigband', label = 'The Big Band',
-        description = 'An evening of jazz with the theatre house band.',
+        id = 'bigband', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@band_play@p1_and_p2', playlist = 'PL_P1', origin = O3,
         peds = {
             CS_BANDBASSIST = `CS_BANDBASSIST`, CS_BANDDRUMMER = `CS_BANDDRUMMER`,
@@ -177,8 +174,7 @@ Config.Shows = {
         },
     },
     {
-        id = 'firedance1', label = 'The Fire Performer',
-        description = 'Flaming batons twirled by a fearless performer.',
+        id = 'firedance1', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@fire_performer@act1_p1@action', origin = O2,
         peds = { PERFORMER = `CS_FIRE_BREATHER` },
         props = {
@@ -189,8 +185,7 @@ Config.Shows = {
         },
     },
     {
-        id = 'firedance2', label = 'The Fire Dancer',
-        description = 'A dance with lotus flames held in the palms.',
+        id = 'firedance2', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@fire_dancer@act3_p1@action', origin = O2,
         peds = { DANCER = `CS_FIRE_BREATHER` },
         props = {
@@ -201,15 +196,13 @@ Config.Shows = {
     },
     {
         -- origin not set explicitly in show_nbx_snakedance_01.c; uses the shared stage origin
-        id = 'snakedance', label = 'The Snake Dancer',
-        description = 'An exotic dance with a ten-foot red boa.',
+        id = 'snakedance', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@snake_dancer@act1_p1@action', playlist = 'PL_DANCE', origin = O2,
         peds = { DANCER = `CS_SWORDDANCER`, SNAKE = `A_C_SNAKEREDBOA10FT_01` },
         props = {},
     },
     {
-        id = 'sworddance', label = 'The Sword Dancer',
-        description = 'A blade balanced with grace and nerve.',
+        id = 'sworddance', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@sword_dancer@act3_p1@action', origin = O2,
         peds = { DANCER = `CS_SWORDDANCER` },
         props = { Sword = `P_SWORD01X` },
@@ -218,8 +211,7 @@ Config.Shows = {
     -- added from the 1436 show_nbx_* scripts (func_27 = models/origin/scene, func_169-style
     -- SET_ANIM_SCENE_ENTITY block = entity names, playlist switch functions = sequence)
     {
-        id = 'bigband2', label = 'The Big Band (Second Set)',
-        description = 'The house band returns for their second set.',
+        id = 'bigband2', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@band_play@p1_and_p2', playlist = 'PL_P2', origin = O3,   -- show_nbx_bigband_02.c
         peds = {
             CS_BANDBASSIST = `CS_BANDBASSIST`, CS_BANDDRUMMER = `CS_BANDDRUMMER`,
@@ -236,8 +228,7 @@ Config.Shows = {
         },
     },
     {
-        id = 'firebreath', label = 'The Fire Breather',
-        description = 'Plumes of flame breathed across the stage.',
+        id = 'firebreath', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@fire_breather@act2_p1@action', playlist = 'PL_Dance',   -- show_nbx_firebreath_01.c
         sequence = { 'Pl_BreathWin' },
         origin = O2,
@@ -251,16 +242,14 @@ Config.Shows = {
         },
     },
     {
-        id = 'snakedance2', label = 'The Snake Dancer (Act II)',
-        description = 'The snake dancer returns with her red boa.',
+        id = 'snakedance2', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@snake_dancer@act2_p1@action', playlist = 'PL_DANCE',    -- show_nbx_snakedance_02.c
         origin = O2, -- not set in the script, same as Act I
         peds = { DANCER = `CS_SWORDDANCER`, SNAKE = `A_C_SNAKEREDBOA10FT_01` },
         props = {},
     },
     {
-        id = 'strongwoman', label = 'Feats of Strength',
-        description = 'The strongwoman bends iron and breaks stone.',
+        id = 'strongwoman', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@feats_of_strength@act1@action', playlist = 'Pbl_Intro', -- show_nbx_strongwoman.c
         sequence = { 'PBL_SUCCESS' },
         origin = nil, -- script never sets an origin on this scene
@@ -274,8 +263,7 @@ Config.Shows = {
         },
     },
     {
-        id = 'escapeartist', label = 'The Escape Artist',
-        description = 'Locked in a box and run through with knives, yet he escapes.',
+        id = 'escapeartist', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@escape_artist@act2_p1@action', playlist = 'PL_A_Performance', -- show_nbx_escapeartist.c
         sequence = { 'PL_B_Loop', 'PL_C_Reappears_Among_Crowd_AI', 'PL_E_Outro' },
         origin = O2,
@@ -283,8 +271,7 @@ Config.Shows = {
         props = { BOX = `S_ESCAPEBOX01X`, Knife = `W_MELEE_KNIFE05`, mask = `P_CS_ESCAPEARTIST_MASK` },
     },
     {
-        id = 'escapenoose', label = 'Escape from the Noose',
-        description = 'Bound in a straitjacket and hung, can he slip free?',
+        id = 'escapenoose', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@shows@escape_noose@act3_p1@action', playlist = 'PL_A_Performance', -- show_nbx_escapenoose.c
         sequence = { 'PL_B_Trying_To_Escape', 'PL_C_Choking', 'PL_E_Shoot_Rope' },
         origin = O2,
@@ -307,8 +294,7 @@ Config.Shows = {
         },
     },
     {
-        id = 'oddfellows', label = 'The Odd Fellows',
-        description = 'Miss Marjorie, the Pinhead and the Magnificent Magnifico.',
+        id = 'oddfellows', -- name/description: locales show_<id> / show_<id>_desc
         scene = 'script@rcm@roddf@ig@roddf_s3@roddf_s3', playlist = 'pl_Performance', flags = 0, -- show_nbx_oddfellows.c
         origin = nil, -- the script never sets an origin on this scene (f_50 is assigned but unused); it's baked into the dict
         peds = {

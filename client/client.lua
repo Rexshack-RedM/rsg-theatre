@@ -20,7 +20,11 @@ local function ReleasePlaylist(s, n)   Citizen.InvokeNative(0xAE6ADA8FE7E84ACC, 
 local function ScenePhase(s)           return Citizen.InvokeNative(0x3FBC3F51BF12DFBF, s, Citizen.ResultAsFloat()) end -- GET_ANIM_SCENE_PHASE
 
 local sellerPed, sellerBlip
-local show = { active = false, peds = {}, props = {}, scene = nil, audience = {}, rope = nil, ropeAnchor = nil }
+-- one table per show run; `show` is the current run. A replaced/stopped run cleans up only its own entities.
+local function newRun(active)
+    return { active = active, peds = {}, props = {}, scene = nil, audience = {}, rope = nil, ropeAnchor = nil }
+end
+local show = newRun(false)
 
 -- the curtain is persistent while you're near the theatre (as in the RDR2 theatre), not per show
 local curtain = { obj = nil, scene = nil, playlist = nil }
@@ -90,16 +94,21 @@ local function spawnCurtain()
 end
 
 -- request -> re-attach CURTAIN -> set -> wait until active -> release the previous playlist
+local curtainBusy = false
 local function playCurtain(playlist)
+    while curtainBusy do Wait(50) end -- an old run closing and a new run opening must not overlap
     if not spawnCurtain() or curtain.playlist == playlist then return end
+    curtainBusy = true
     local s, prev = curtain.scene, curtain.playlist
     RequestPlaylist(s, playlist)
-    if not waitFor(function() return PlaylistLoaded(s, playlist) end, 5000) then return end
-    SetSceneEntity(s, Config.Curtain.entity, curtain.obj)
-    SetPlaylist(s, playlist)
-    waitFor(function() return PlaylistActive(s, playlist) end, 3000)
-    if prev and PlaylistLoaded(s, prev) then ReleasePlaylist(s, prev) end
-    curtain.playlist = playlist
+    if waitFor(function() return PlaylistLoaded(s, playlist) end, 5000) then
+        SetSceneEntity(s, Config.Curtain.entity, curtain.obj)
+        SetPlaylist(s, playlist)
+        waitFor(function() return PlaylistActive(s, playlist) end, 3000)
+        if prev and PlaylistLoaded(s, prev) then ReleasePlaylist(s, prev) end
+        curtain.playlist = playlist
+    end
+    curtainBusy = false
 end
 
 -- keep the curtain in place while the player is near the stage
@@ -114,16 +123,19 @@ end)
 ---------------------------------------------------------------------
 -- cleanup
 ---------------------------------------------------------------------
-local function cleanupShow()
-    if SceneExists(show.scene) then DeleteScene(show.scene) end
-    for _, ped in pairs(show.peds) do if DoesEntityExist(ped) then DeleteEntity(ped) end end
-    for _, obj in pairs(show.props) do if DoesEntityExist(obj) then DeleteEntity(obj) end end
-    if show.rope and Citizen.InvokeNative(0xFD5448BE3111ED96, show.rope) then -- DOES_ROPE_EXIST
-        Citizen.InvokeNative(0x52B4829281364649, Citizen.PointerValueIntInitialized(show.rope)) -- DELETE_ROPE
+local function cleanupShow(run)
+    run = run or show
+    run.active = false
+    if SceneExists(run.scene) then DeleteScene(run.scene) end
+    for _, ped in pairs(run.peds) do if DoesEntityExist(ped) then DeleteEntity(ped) end end
+    for _, obj in pairs(run.props) do if DoesEntityExist(obj) then DeleteEntity(obj) end end
+    if run.rope and Citizen.InvokeNative(0xFD5448BE3111ED96, run.rope) then -- DOES_ROPE_EXIST
+        Citizen.InvokeNative(0x52B4829281364649, Citizen.PointerValueIntInitialized(run.rope)) -- DELETE_ROPE
     end
-    if show.ropeAnchor and DoesEntityExist(show.ropeAnchor) then DeleteEntity(show.ropeAnchor) end
-    for _, ped in ipairs(show.audience) do if DoesEntityExist(ped) then DeleteEntity(ped) end end
-    show = { active = false, peds = {}, props = {}, scene = nil, audience = {}, rope = nil, ropeAnchor = nil }
+    if run.ropeAnchor and DoesEntityExist(run.ropeAnchor) then DeleteEntity(run.ropeAnchor) end
+    for _, ped in ipairs(run.audience) do if DoesEntityExist(ped) then DeleteEntity(ped) end end
+    run.peds, run.props, run.audience, run.scene, run.rope, run.ropeAnchor = {}, {}, {}, nil, nil, nil
+    if show == run then show = newRun(false) end
 end
 
 ---------------------------------------------------------------------
@@ -149,27 +161,27 @@ local function seatPed(model, seat)
 end
 
 local function pickModel(a, seat)
-    local model = Citizen.InvokeNative(0x6B12ED8C77E8567B, a.popSet, 0, -156825994, false, true, seat.x, seat.y, seat.z) -- GET_RANDOM_MODEL_FROM_POPULATION_SET
+    local model = Citizen.InvokeNative(0x6B12ED8C77E8567B, a.popSet, 0, -156825994, false, true, seat.x, seat.y, seat.z, Citizen.ResultAsInteger()) -- GET_RANDOM_MODEL_FROM_POPULATION_SET
     if not model or model == 0 or not IsModelValid(model) then
         model = a.fallbackModels[math.random(#a.fallbackModels)]
     end
     return model
 end
 
-local function spawnAudience(data)
+local function spawnAudience(run, data)
     local a = Config.Audience
     local v = data.volunteer
     -- the volunteer sits in the audience but belongs to the act, so they're always spawned
-    -- and stored with the performers (attached to the scene with the rest of show.peds)
+    -- and stored with the performers (attached to the scene with the rest of run.peds)
     if v and not seatTaken(v.seat) then
-        show.peds[v.entity] = seatPed(v.model, v.seat)
+        run.peds[v.entity] = seatPed(v.model, v.seat)
     end
     if not a or not a.enabled then return end
     for _, seat in ipairs(a.seats) do
-        if not show.active then return end
+        if not run.active then return end
         if math.random() <= a.fill and not seatTaken(seat, v and v.seat) then
             local ped = seatPed(pickModel(a, seat), seat)
-            if ped then show.audience[#show.audience + 1] = ped end
+            if ped then run.audience[#run.audience + 1] = ped end
         end
     end
 end
@@ -177,19 +189,19 @@ end
 ---------------------------------------------------------------------
 -- rope (same steps as show_nbx_escapenoose.c: anchor -> freeze -> _ADD_ROPE_2 -> attach)
 ---------------------------------------------------------------------
-local function spawnRope(r)
-    local target = show.props[r.prop]
+local function spawnRope(run, r)
+    local target = run.props[r.prop]
     if not target or not DoesEntityExist(target) or not loadModel(r.anchorModel) then return end
     local a = r.anchorCoords
-    show.ropeAnchor = CreateObject(r.anchorModel, a.x, a.y, a.z, false, false, false, false, true)
+    run.ropeAnchor = CreateObject(r.anchorModel, a.x, a.y, a.z, false, false, false, false, true)
     SetModelAsNoLongerNeeded(r.anchorModel)
-    waitFor(function() return DoesEntityHavePhysics(show.ropeAnchor) end, 3000)
-    SetEntityCoords(show.ropeAnchor, a.x, a.y, a.z, true, false, true, true)
-    FreezeEntityPosition(show.ropeAnchor, true)
+    waitFor(function() return DoesEntityHavePhysics(run.ropeAnchor) end, 3000)
+    SetEntityCoords(run.ropeAnchor, a.x, a.y, a.z, true, false, true, true)
+    FreezeEntityPosition(run.ropeAnchor, true)
     local c = r.coords
-    show.rope = Citizen.InvokeNative(0xE9C59F6809373A99, c.x, c.y, c.z, 0.0, 0.0, 0.0, r.length, r.ropeType, false, -1, -1.0, Citizen.ResultAsInteger()) -- _ADD_ROPE_2
-    Citizen.InvokeNative(0x462FF2A432733A44, show.rope, show.ropeAnchor, target, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0) -- _ATTACH_ENTITIES_TO_ROPE_2
-    Citizen.InvokeNative(0x522FA3F490E2F7AC, show.rope, 1, 1) -- unnamed, called right after attaching in the script
+    run.rope = Citizen.InvokeNative(0xE9C59F6809373A99, c.x, c.y, c.z, 0.0, 0.0, 0.0, r.length, r.ropeType, false, -1, -1.0, Citizen.ResultAsInteger()) -- _ADD_ROPE_2
+    Citizen.InvokeNative(0x462FF2A432733A44, run.rope, run.ropeAnchor, target, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0) -- _ATTACH_ENTITIES_TO_ROPE_2
+    Citizen.InvokeNative(0x522FA3F490E2F7AC, run.rope, 1, 1) -- unnamed, called right after attaching in the script
 end
 
 ---------------------------------------------------------------------
@@ -197,18 +209,27 @@ end
 ---------------------------------------------------------------------
 RegisterNetEvent('rsg-theatre:client:playShow', function(index)
     local data = Config.Shows[index]
-    if not data or show.active then return end
-    show.active = true
+    if not data then return end
+    if show.active then show.active = false end -- a new show replaces the old one; its thread cleans itself up
+    local run = newRun(true)
+    show = run
 
-    lib.notify({ title = locale('cl_title'), description = locale('cl_show_starting', data.label), type = 'inform' })
+    -- every blocking step can be interrupted by a stop or a newer show
+    local function aborted()
+        if run.active then return false end
+        cleanupShow(run)
+        return true
+    end
+
+    lib.notify({ title = locale('cl_title'), description = locale('cl_show_starting', locale('show_' .. data.id)), type = 'inform' })
 
     -- curtain should already be there (closed); make sure
     local c = Config.Curtain
     spawnCurtain()
-    spawnAudience(data)
+    spawnAudience(run, data)
+    if aborted() then return end
 
-    -- performers
-    local o = data.origin
+    -- performers and props start backstage; the scene walks them on
     local spawn = Config.Backstage
     for name, model in pairs(data.peds) do
         if loadModel(model) then
@@ -216,64 +237,75 @@ RegisterNetEvent('rsg-theatre:client:playShow', function(index)
             Citizen.InvokeNative(0x283978A15512B2FE, ped, true) -- _SET_RANDOM_OUTFIT_VARIATION
             SetBlockingOfNonTemporaryEvents(ped, true)
             SetEntityInvincible(ped, true)
-            show.peds[name] = ped
+            run.peds[name] = ped
             SetModelAsNoLongerNeeded(model)
         end
     end
     for name, model in pairs(data.props) do
         if loadModel(model) then
-            show.props[name] = CreateObject(model, spawn.x, spawn.y, spawn.z, false, false, false, false, true)
+            run.props[name] = CreateObject(model, spawn.x, spawn.y, spawn.z, false, false, false, false, true)
             SetModelAsNoLongerNeeded(model)
         end
     end
+    if aborted() then return end
 
     -- performance scene (same order as show_nbx_cancan.c: create -> origin/entities -> load -> start)
-    show.scene = CreateScene(data.scene, data.flags or 2, data.playlist)
-    if o then SetSceneOrigin(show.scene, o.coords, o.rot) end -- shows without an origin use the one baked into the scene
-    for name, ent in pairs(show.peds) do SetSceneEntity(show.scene, name, ent) end
-    for name, ent in pairs(show.props) do SetSceneEntity(show.scene, name, ent) end
-    LoadScene(show.scene)
+    run.scene = CreateScene(data.scene, data.flags or 2, data.playlist)
+    if data.origin then SetSceneOrigin(run.scene, data.origin.coords, data.origin.rot) end -- nil = origin baked into the scene
+    for name, ent in pairs(run.peds) do SetSceneEntity(run.scene, name, ent) end
+    for name, ent in pairs(run.props) do SetSceneEntity(run.scene, name, ent) end
+    LoadScene(run.scene)
 
-    if not waitFor(function() return IsSceneLoaded(show.scene) end, 15000) then
-        lib.notify({ title = locale('cl_title'), description = locale('cl_show_failed'), type = 'error' })
-        cleanupShow()
-        TriggerServerEvent('rsg-theatre:server:showFinished')
+    if not waitFor(function() return not run.active or IsSceneLoaded(run.scene) end, 15000) or aborted() then
+        if run.active then
+            lib.notify({ title = locale('cl_title'), description = locale('cl_show_failed'), type = 'error' })
+            cleanupShow(run)
+            TriggerServerEvent('rsg-theatre:server:showFinished')
+        end
         return
     end
 
-    if data.rope then spawnRope(data.rope) end
+    if data.rope then spawnRope(run, data.rope) end
     playCurtain(c.open)
     Wait(Config.CurtainOpenDelay)
-    StartScene(show.scene)
+    if aborted() then return end
+    StartScene(run.scene)
 
     -- optional follow-on playlists: move to the next one as the current one ends
     -- (the show_nbx_* scripts switch at phase >= 0.99, then wait for the new playlist to go active)
     local sequence = data.sequence or {}
     local step, waitingFor = 1, nil
+    local completed = false
     local endTime = GetGameTimer() + (Config.MaxShowLength * 1000)
-    while show.active and GetGameTimer() < endTime do
+    while run.active and GetGameTimer() < endTime do
         Wait(#sequence > 0 and 100 or 500)
-        if not SceneExists(show.scene) then break end
+        if not SceneExists(run.scene) then break end
         if #(GetEntityCoords(cache.ped) - Config.Stage) > Config.AudienceRadius * 2 then break end
         if waitingFor then
-            if PlaylistActive(show.scene, waitingFor) then waitingFor = nil end
+            if PlaylistActive(run.scene, waitingFor) then waitingFor = nil end
         elseif step <= #sequence then
-            if ScenePhase(show.scene) >= 0.99 then
+            if ScenePhase(run.scene) >= 0.99 then
                 waitingFor = sequence[step]
-                switchPlaylist(show.scene, waitingFor)
+                switchPlaylist(run.scene, waitingFor)
                 step = step + 1
             end
-        elseif SceneFinished(show.scene) or ScenePhase(show.scene) >= 0.999 then
+        elseif SceneFinished(run.scene) or ScenePhase(run.scene) >= 0.999 then
+            completed = true
             break
         end
     end
 
-    if show.active then
+    -- replaced by a newer show: just remove our entities, the new run owns the curtain
+    if show ~= run then cleanupShow(run) return end
+
+    if run.active then
         playCurtain(c.close)
         Wait(Config.CurtainCloseDelay)
-        lib.notify({ title = locale('cl_title'), description = locale('cl_show_over'), type = 'success' })
+        if completed then
+            lib.notify({ title = locale('cl_title'), description = locale('cl_show_over'), type = 'success' })
+        end
     end
-    cleanupShow()
+    cleanupShow(run)
     if curtain.playlist ~= c.closed and curtain.playlist ~= c.close then
         playCurtain(c.close) -- stopped early: still bring the curtain down
     end
@@ -302,6 +334,7 @@ local function openPlaybill()
             starts = bill.minutes > 0 and locale('ui_starts_in', bill.minutes) or locale('ui_starts_soon'),
             running = locale('ui_running'), price = locale('ui_price'),
             buy = locale('ui_buy'), owned = locale('ui_owned'), close = locale('ui_close'),
+            currency = locale('ui_currency'),
         }
     })
 end
@@ -321,7 +354,7 @@ CreateThread(function()
     local s = Config.TicketSeller
     sellerBlip = BlipAddForCoords(1664425300, s.coords.x, s.coords.y, s.coords.z)
     SetBlipSprite(sellerBlip, s.blip.sprite, true)
-    Citizen.InvokeNative(0x9CB1A1623062F402, sellerBlip, s.blip.name) -- _SET_BLIP_NAME
+    Citizen.InvokeNative(0x9CB1A1623062F402, sellerBlip, locale('blip_name')) -- _SET_BLIP_NAME
 
     if not loadModel(s.model) then return end
     sellerPed = CreatePed(s.model, s.coords.x, s.coords.y, s.coords.z - 1.0, s.coords.w, false, false, false, false)
